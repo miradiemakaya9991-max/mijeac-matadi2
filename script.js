@@ -3,11 +3,11 @@
 const TOKEN_KEY = "mijeac_auth_token";
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;"
+  "&": "&",
+  "<": "<",
+  ">": ">",
+  '"': """,
+  "'": "'"
 }[c]));
 const todayLocal = () => new Date().toLocaleDateString("en-CA");
 
@@ -112,8 +112,8 @@ function renderAuth() {
         <p class="note">District Matadi 2 — Base de données synchronisée.</p>
       </div>
       <form onsubmit="login(event)">
-        <label>Adresse e-mail</label>
-        <input id="loginEmail" type="email" required autocomplete="username" placeholder="Votre e-mail">
+        <label>Identifiant ou adresse e-mail</label>
+        <input id="loginEmail" type="text" required autocomplete="username" placeholder="admin ou votre e-mail">
         <label style="margin-top:10px">Mot de passe</label>
         <input id="loginPass" type="password" required autocomplete="current-password" placeholder="Votre mot de passe">
         <button class="b" id="loginSubmitBtn" style="width:100%;margin-top:14px">Se connecter</button>
@@ -148,7 +148,8 @@ async function login(e) {
   const btn = $("#loginSubmitBtn");
   if (btn) btn.disabled = true;
   try {
-    const email = $("#loginEmail").value.trim().toLowerCase();
+    const rawLogin = $("#loginEmail").value.trim();
+    const email = rawLogin.toLowerCase() === "admin" ? "admin" : rawLogin.toLowerCase();
     const password = $("#loginPass").value;
     const data = await api("/api/login", "POST", { email, password });
     localStorage.setItem(TOKEN_KEY, data.token);
@@ -814,9 +815,10 @@ async function saveActivity(e) {
 }
 
 async function deleteActivity(aid) {
-  if (!confirm("Supprimer cette activité et ses participations ?")) return;
+  if (!confirm("Supprimer cette activité ?")) return;
   try {
     await api(`/api/activities/${encodeURIComponent(aid)}`, "DELETE");
+    if (selectedActivity === aid) selectedActivity = null;
     render();
     msg("Activité supprimée.");
   } catch (err) {
@@ -824,169 +826,78 @@ async function deleteActivity(aid) {
   }
 }
 
-function openAttendance(aid) { selectedActivity = aid; tab = "participation"; render(); }
+function openAttendance(aid) {
+  selectedActivity = aid;
+  tab = "participation";
+  render();
+}
 
 function participation() {
-  let list = state.activities.filter(allowedActivity);
-  if (selectedActivity && !list.some(a => a.id === selectedActivity)) selectedActivity = null;
-  if (!selectedActivity) {
-    return `
-      <div class="card">
-        <h2>Choisir une activité</h2>
-        ${list
-          .map(
-            a => `
-          <div class="row" style="justify-content:space-between;margin-bottom:8px">
-            <span><b>${esc(a.title)}</b> — ${esc(String(a.date).slice(0, 10))}</span>
-            <button class="b" onclick="selectedActivity='${esc(a.id)}';render()">Ouvrir la feuille de présence</button>
-          </div>`
-          )
-          .join("") || '<p class="note">Aucune activité disponible.</p>'}
-      </div>`;
-  }
-
-  let a = state.activities.find(x => x.id === selectedActivity),
-    eligible = state.youths.filter(y => allowedYouth(y) && y.status === "Actif" && (!a.parishId || y.parishId === a.parishId));
-  let records = state.participations.filter(p => p.activityId === a.id),
-    count = s => eligible.filter(y => records.find(p => p.youthId === y.id)?.status === s).length;
+  let acts = state.activities.filter(allowedActivity).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  if (!acts.length) return '<div class="card note">Aucune activité disponible.</div>';
+  let aid = selectedActivity && acts.some(a => a.id === selectedActivity) ? selectedActivity : acts[0].id;
+  selectedActivity = aid;
+  let ys = state.youths.filter(allowedYouth).filter(y => y.status === "Actif");
 
   return `
     <div class="card">
-      <button class="b alt" onclick="selectedActivity=null;render()">← Toutes les activités</button>
-      <h2 style="margin-top:10px">${esc(a.title)}</h2>
-      <p class="note">${esc(String(a.date).slice(0, 10))} · ${esc(a.location || "Lieu à préciser")}</p>
-      <div class="grid">
-        <div class="card kpi"><b>${eligible.length}</b><span>Jeunes attendus</span></div>
-        <div class="card kpi"><b>${count("Présent")}</b><span>Présents</span></div>
-        <div class="card kpi"><b>${count("Absent")}</b><span>Absents</span></div>
-        <div class="card kpi"><b>${count("Excusé")}</b><span>Excusés</span></div>
-      </div>
+      <h2>Feuille de participation</h2>
       <div class="row">
-        <input id="attSearch" placeholder="Rechercher un jeune…" oninput="filterAttendance()">
-        <button class="b alt" onclick="setAllAttendance('${esc(a.id)}','Présent')">Tous présents</button>
-        <button class="b alt" onclick="setAllAttendance('${esc(a.id)}','Absent')">Tous absents</button>
-        <button class="b alt" onclick="exportCSV('attendance','${esc(a.id)}')">Exporter CSV</button>
+        <select onchange="selectedActivity=this.value;render()">
+          ${acts.map(a => `<option value="${esc(a.id)}" ${a.id === aid ? "selected" : ""}>${esc(a.title)} (${esc(String(a.date).slice(0, 10))})</option>`).join("")}
+        </select>
+        <button class="b alt" onclick="exportCSV('participations', '${esc(aid)}')">⬇ CSV</button>
       </div>
-      <div class="card table-wrap">
-        <table>
-          <tr><th>Jeune</th><th>Paroisse</th><th>Participation</th><th>Observation</th></tr>
-          <tbody id="attRows">${attendanceRows(a, eligible, records)}</tbody>
-        </table>
-      </div>
-      <p class="note">Les changements sont enregistrés en temps réel sur le serveur.</p>
+    </div>
+    <div class="card table-wrap">
+      <table>
+        <tr><th>Jeune</th><th>Paroisse</th><th>Présence</th></tr>
+        ${ys
+          .map(y => {
+            let p = state.participations.find(x => x.activityId === aid && x.youthId === y.id);
+            let present = p ? !!p.present : false;
+            return `
+              <tr>
+                <td>${esc(yname(y))}</td>
+                <td>${esc(pname(y.parishId))}</td>
+                <td>
+                  <button class="b ${present ? "" : "alt"}" onclick="toggleAttendance('${esc(aid)}', '${esc(y.id)}', ${!present})">
+                    ${present ? "✓ Présent" : "Absent"}
+                  </button>
+                </td>
+              </tr>`;
+          })
+          .join("") || '<tr><td colspan="3">Aucun jeune actif.</td></tr>'}
+      </table>
     </div>`;
 }
 
-function attendanceRows(a, ys, records) {
-  return (
-    ys
-      .map(y => {
-        let p = records.find(x => x.youthId === y.id) || {};
-        return `
-        <tr data-person="${esc(yname(y).toLowerCase())}">
-          <td>${esc(yname(y))}</td>
-          <td>${esc(pname(y.parishId))}</td>
-          <td>
-            <select onchange="setAttendance('${esc(a.id)}','${esc(y.id)}',this.value)">
-              <option value="">Non renseigné</option>
-              ${["Présent", "Absent", "Excusé"].map(s => `<option value="${s}" ${p.status === s ? "selected" : ""}>${s}</option>`).join("")}
-            </select>
-          </td>
-          <td>
-            <input value="${esc(p.note || "")}" placeholder="Remarque" onchange="setAttendanceNote('${esc(a.id)}','${esc(y.id)}',this.value)">
-          </td>
-        </tr>`;
-      })
-      .join("") || '<tr><td colspan="4">Aucun jeune actif concerné par cette activité.</td></tr>'
-  );
-}
-
-function filterAttendance() {
-  let q = ($("#attSearch")?.value || "").toLowerCase();
-  document.querySelectorAll("#attRows tr").forEach(r => {
-    r.style.display = r.dataset.person?.includes(q) ? "" : "none";
-  });
-}
-
-async function setAttendance(aid, yid, status) {
+async function toggleAttendance(activityId, youthId, present) {
   try {
-    await api("/api/attendance", "POST", { activityId: aid, youthId: yid, status });
+    await api("/api/participations", "POST", { activityId, youthId, present });
     render();
   } catch (err) {
     msg(err.message);
   }
-}
-
-async function setAttendanceNote(aid, yid, note) {
-  try {
-    await api("/api/attendance", "POST", { activityId: aid, youthId: yid, note });
-    msg("Observation enregistrée.");
-  } catch (err) {
-    msg(err.message);
-  }
-}
-
-async function setAllAttendance(aid, status) {
-  try {
-    await api("/api/attendance/bulk", "POST", { activityId: aid, status });
-    render();
-    msg(`Tous les jeunes marqués : ${status}.`);
-  } catch (err) {
-    msg(err.message);
-  }
-}
-
-function exportCSV(type, aid = "") {
-  let rows = [], filename = "mijeac_export.csv";
-
-  if (type === "youths") {
-    filename = `mijeac_jeunes_${todayLocal()}.csv`;
-    rows.push(["Nom", "Prénom", "Sexe", "Âge", "Téléphone", "E-mail", "Adresse", "Études", "Fonction", "Situation", "Paroisse", "Statut", "Baptisé"]);
-    filteredYouths().forEach(y => {
-      rows.push([
-        y.lastName || "", y.firstName || "", y.sex || "", y.age || "", y.phone || "",
-        y.email || "", y.address || "", y.studies || "", y.churchRole || "",
-        y.situation || "", pname(y.parishId), y.status || "Actif", baptismLabel(y)
-      ]);
-    });
-  } else if (type === "attendance") {
-    let a = state.activities.find(x => x.id === aid);
-    if (!a) return;
-    filename = `presence_${a.title.replace(/[^a-zA-Z0-9_-]/g, "_")}_${String(a.date).slice(0, 10)}.csv`;
-    rows.push(["Activité", "Date", "Jeune", "Paroisse", "Statut", "Observation"]);
-    let eligible = state.youths.filter(y => allowedYouth(y) && y.status === "Actif" && (!a.parishId || y.parishId === a.parishId));
-    eligible.forEach(y => {
-      let p = state.participations.find(x => x.activityId === a.id && x.youthId === y.id) || {};
-      rows.push([a.title, String(a.date).slice(0, 10), yname(y), pname(y.parishId), p.status || "Non renseigné", p.note || ""]);
-    });
-  }
-
-  const csvContent = "\uFEFF" + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(link.href);
 }
 
 function logs() {
   return `
     <div class="card table-wrap">
-      <h2>Historique des opérations (${state.logs.length})</h2>
+      <h2>Historique récent</h2>
       <table>
-        <tr><th>Date & Heure</th><th>Utilisateur</th><th>Action</th><th>Détail</th></tr>
+        <tr><th>Date</th><th>Utilisateur</th><th>Action</th></tr>
         ${state.logs
+          .slice(0, 100)
           .map(
             l => `
           <tr>
-            <td>${esc(new Date(l.date).toLocaleString("fr-FR"))}</td>
-            <td>${esc(l.user)}</td>
-            <td><b>${esc(l.action)}</b></td>
-            <td>${esc(l.detail || "—")}</td>
+            <td>${esc(l.createdAt || l.date || "")}</td>
+            <td>${esc(l.actor || l.user || "—")}</td>
+            <td>${esc(l.action || l.message || "")}</td>
           </tr>`
           )
-          .join("") || '<tr><td colspan="4">Aucune opération enregistrée.</td></tr>'}
+          .join("") || '<tr><td colspan="3">Aucun journal enregistré.</td></tr>'}
       </table>
     </div>`;
 }
@@ -994,13 +905,35 @@ function logs() {
 function manual() {
   return `
     <div class="card">
-      <h2>Guide d’utilisation — MIJEAC</h2>
-      <h3>1. Rôles et permissions</h3>
-      <p><b>Administrateur du district :</b> gère les paroisses, valide ou crée les comptes responsables, programme les activités du district et consulte toutes les statistiques.</p>
-      <p><b>Responsable de paroisse :</b> inscrit et met à jour les fiches des jeunes de sa paroisse, et remplit les feuilles de présence aux activités.</p>
-      <h3>2. Synchronisation cloud</h3>
-      <p>Toutes les données sont enregistrées en temps réel sur la base PostgreSQL (Neon / Render).</p>
+      <h2>Guide d’utilisation — MIJEAC District Matadi 2</h2>
+      <p>1. Connectez-vous avec votre identifiant ou adresse e-mail et votre mot de passe.</p>
+      <p>2. Gérez les fiches des jeunes, les paroisses, les comptes responsables et les activités.</p>
+      <p>3. Suivez la participation aux activités et exportez vos données en CSV.</p>
     </div>`;
+}
+
+function exportCSV(type, activityId = "") {
+  let rows = [];
+  if (type === "youths") {
+    rows = [["Nom", "Prénom", "Sexe", "Âge", "Paroisse", "Baptisé", "Statut", "Téléphone"]];
+    filteredYouths().forEach(y => {
+      rows.push([y.lastName || "", y.firstName || "", y.sex || "", y.age || "", pname(y.parishId), baptismLabel(y), y.status || "", y.phone || ""]);
+    });
+  } else if (type === "participations" && activityId) {
+    rows = [["Nom", "Prénom", "Paroisse", "Présent"]];
+    state.youths.filter(allowedYouth).forEach(y => {
+      let p = state.participations.find(x => x.activityId === activityId && x.youthId === y.id);
+      rows.push([y.lastName || "", y.firstName || "", pname(y.parishId), p?.present ? "Oui" : "Non"]);
+    });
+  }
+  const csv = rows.map(r => r.map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${type}-${todayLocal()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 window.addEventListener("DOMContentLoaded", init);
