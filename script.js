@@ -2,13 +2,12 @@
 
 const TOKEN_KEY = "mijeac_auth_token";
 const $ = s => document.querySelector(s);
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({
-  "&": "&",
-  "<": "<",
-  ">": ">",
-  '"': """,
-  "'": "'"
-}[c]));
+const esc = s => String(s ?? "")
+  .replace(/&/g, "&")
+  .replace(/</g, "<")
+  .replace(/>/g, ">")
+  .replace(/"/g, "")
+  .replace(/'/g, "'");
 const todayLocal = () => new Date().toLocaleDateString("en-CA");
 
 let state = { users: [], parishes: [], youths: [], activities: [], participations: [], logs: [] },
@@ -74,38 +73,50 @@ function matchesBaptism(y) {
 }
 
 async function init() {
-  applyTheme();
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (token) {
-    try {
-      await api("/api/state");
-      tab = me?.mustChange ? "profile" : "dash";
-      return render();
-    } catch (e) {
-      localStorage.removeItem(TOKEN_KEY);
+  try {
+    applyTheme();
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      try {
+        await api("/api/state");
+        tab = me?.mustChange ? "profile" : "dash";
+        return render();
+      } catch (e) {
+        localStorage.removeItem(TOKEN_KEY);
+      }
     }
+  } catch (err) {
+    console.error("Erreur init:", err);
   }
   renderAuth();
 }
 
 function applyTheme() {
-  document.documentElement.dataset.theme = localStorage.getItem("mijeac_theme") || "light";
+  try {
+    document.documentElement.dataset.theme = localStorage.getItem("mijeac_theme") || "light";
+  } catch (e) {
+    document.documentElement.dataset.theme = "light";
+  }
 }
 
 function toggleTheme() {
   let t = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  localStorage.setItem("mijeac_theme", t);
+  try {
+    localStorage.setItem("mijeac_theme", t);
+  } catch (e) {}
   applyTheme();
 }
 
 function renderAuth() {
-  $("#auth")?.classList.remove("hidden");
+  const authEl = $("#auth");
+  if (!authEl) return;
+  authEl.classList.remove("hidden");
   $("#nav")?.classList.add("hidden");
   $("#app")?.classList.add("hidden");
   $("#logoutBtn")?.classList.add("hidden");
   if ($("#who")) $("#who").textContent = "Gestion du ministère de jeunes";
 
-  $("#auth").innerHTML = `
+  authEl.innerHTML = `
     <div class="card">
       <div class="center">
         <h2>Connexion à MIJEAC</h2>
@@ -126,7 +137,9 @@ function renderAuth() {
 }
 
 function signupForm() {
-  $("#auth").innerHTML = `
+  const authEl = $("#auth");
+  if (!authEl) return;
+  authEl.innerHTML = `
     <div class="card">
       <h2>Demande de création de compte</h2>
       <form onsubmit="signup(event)">
@@ -148,12 +161,14 @@ async function login(e) {
   const btn = $("#loginSubmitBtn");
   if (btn) btn.disabled = true;
   try {
-    const rawLogin = $("#loginEmail").value.trim();
+    const rawLogin = ($("#loginEmail")?.value || "").trim();
     const email = rawLogin.toLowerCase() === "admin" ? "admin" : rawLogin.toLowerCase();
-    const password = $("#loginPass").value;
+    const password = $("#loginPass")?.value || "";
     const data = await api("/api/login", "POST", { email, password });
-    localStorage.setItem(TOKEN_KEY, data.token);
-    tab = me.mustChange ? "profile" : "dash";
+    if (data.token) {
+      try { localStorage.setItem(TOKEN_KEY, data.token); } catch (err) {}
+    }
+    tab = me?.mustChange ? "profile" : "dash";
     render();
   } catch (err) {
     msg(err.message);
@@ -183,7 +198,7 @@ async function logout() {
   try {
     await api("/api/logout", "POST");
   } catch (e) {}
-  localStorage.removeItem(TOKEN_KEY);
+  try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
   me = null;
   editing = null;
   activityEdit = null;
@@ -195,11 +210,13 @@ function render() {
   const u = current();
   if (!u) return renderAuth();
 
-  $("#auth").classList.add("hidden");
-  $("#nav").classList.remove("hidden");
-  $("#app").classList.remove("hidden");
-  $("#logoutBtn").classList.remove("hidden");
-  $("#who").textContent = (admin() ? "Administrateur du district" : "Responsable de " + pname(u.parishId)) + " · " + u.name;
+  $("#auth")?.classList.add("hidden");
+  $("#nav")?.classList.remove("hidden");
+  $("#app")?.classList.remove("hidden");
+  $("#logoutBtn")?.classList.remove("hidden");
+  if ($("#who")) {
+    $("#who").textContent = (admin() ? "Administrateur du district" : "Responsable de " + pname(u.parishId)) + " · " + u.name;
+  }
 
   let tabs = [
     ["dash", "📊 Tableau de bord"],
@@ -213,10 +230,14 @@ function render() {
   }
   if (u.mustChange) tab = "profile";
 
-  $("#nav").innerHTML = tabs
-    .map(([k, l]) => `<button class="${tab === k ? "on" : ""}" onclick="go('${k}')">${l}</button>`)
-    .join("");
-  $("#app").innerHTML = ({ dash, youth, activities, participation, profile, parishes, users, logs, manual }[tab] || dash)();
+  if ($("#nav")) {
+    $("#nav").innerHTML = tabs
+      .map(([k, l]) => `<button class="${tab === k ? "on" : ""}" onclick="go('${k}')">${l}</button>`)
+      .join("");
+  }
+  if ($("#app")) {
+    $("#app").innerHTML = ({ dash, youth, activities, participation, profile, parishes, users, logs, manual }[tab] || dash)();
+  }
 }
 
 function go(t) {
