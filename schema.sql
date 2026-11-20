@@ -1,0 +1,77 @@
+CREATE TABLE IF NOT EXISTS parishes (
+  id VARCHAR(40) PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  address VARCHAR(255) DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id VARCHAR(40) PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  email VARCHAR(150) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role VARCHAR(40) NOT NULL DEFAULT 'RESPONSABLE_PAROISSE',
+  parish_id VARCHAR(40) REFERENCES parishes(id) ON DELETE SET NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  must_change BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS youths (
+  id VARCHAR(40) PRIMARY KEY,
+  last_name VARCHAR(100) NOT NULL,
+  first_name VARCHAR(100) NOT NULL,
+  sex VARCHAR(10) DEFAULT '',
+  age INT,
+  phone VARCHAR(40) DEFAULT '',
+  email VARCHAR(150) DEFAULT '',
+  address VARCHAR(255) DEFAULT '',
+  studies VARCHAR(120) DEFAULT '',
+  church_role VARCHAR(120) DEFAULT '',
+  situation VARCHAR(80) DEFAULT '',
+  parish_id VARCHAR(40) NOT NULL REFERENCES parishes(id) ON DELETE RESTRICT,
+  status VARCHAR(40) NOT NULL DEFAULT 'Actif',
+  baptized VARCHAR(10) NOT NULL DEFAULT 'Non',
+  photo TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS activities (
+  id VARCHAR(40) PRIMARY KEY,
+  title VARCHAR(200) NOT NULL,
+  activity_date DATE NOT NULL,
+  activity_time VARCHAR(20) DEFAULT '',
+  location VARCHAR(200) DEFAULT '',
+  parish_id VARCHAR(40) REFERENCES parishes(id) ON DELETE SET NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'Programmée',
+  description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS participations (
+  id VARCHAR(40) PRIMARY KEY,
+  activity_id VARCHAR(40) NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+  youth_id VARCHAR(40) NOT NULL REFERENCES youths(id) ON DELETE CASCADE,
+  status VARCHAR(30) DEFAULT '',
+  note VARCHAR(255) DEFAULT '',
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_act_youth UNIQUE (activity_id, youth_id)
+);
+
+CREATE TABLE IF NOT EXISTS logs (
+  id VARCHAR(40) PRIMARY KEY,
+  log_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  user_name VARCHAR(150) NOT NULL,
+  action VARCHAR(150) NOT NULL,
+  detail VARCHAR(255) DEFAULT ''
+);
+
+INSERT INTO users (id, name, email, password_hash, role, parish_id, status, must_change)
+VALUES (
+  'admin-root',
+  'Administrateur du district',
+  'admin@mijeac.local',
+  '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+  'ADMIN_DISTRICT',
+  NULL,
+  'ACTIVE',
+  TRUE
+) ON CONFLICT (id) DO NOTHING;
