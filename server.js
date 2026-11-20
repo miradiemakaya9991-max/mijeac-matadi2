@@ -75,6 +75,75 @@ async function addLog(userName, action, detail = "") {
 }
 
 async function ensureSeedData() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS parishes (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      address TEXT DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'RESPONSABLE_PAROISSE',
+      parish_id TEXT,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      must_change BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS youths (
+      id TEXT PRIMARY KEY,
+      last_name TEXT NOT NULL,
+      first_name TEXT NOT NULL,
+      sex TEXT DEFAULT '',
+      age INTEGER,
+      phone TEXT DEFAULT '',
+      email TEXT DEFAULT '',
+      address TEXT DEFAULT '',
+      studies TEXT DEFAULT '',
+      church_role TEXT DEFAULT '',
+      situation TEXT DEFAULT '',
+      parish_id TEXT,
+      status TEXT DEFAULT 'Actif',
+      baptized TEXT DEFAULT 'Non',
+      photo TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS activities (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      activity_date DATE NOT NULL,
+      activity_time TEXT DEFAULT '',
+      location TEXT DEFAULT '',
+      parish_id TEXT,
+      status TEXT DEFAULT 'Programmée',
+      description TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS participations (
+      id TEXT PRIMARY KEY,
+      activity_id TEXT NOT NULL,
+      youth_id TEXT NOT NULL,
+      status TEXT DEFAULT '',
+      note TEXT DEFAULT '',
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (activity_id, youth_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS logs (
+      id TEXT PRIMARY KEY,
+      log_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      user_name TEXT NOT NULL,
+      action TEXT NOT NULL,
+      detail TEXT DEFAULT ''
+    );
+  `);
+
   await pool.query(
     `INSERT INTO parishes (id, name, address)
      VALUES ($1, $2, $3)
@@ -611,13 +680,21 @@ app.post("/api/attendance/bulk", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-ensureSeedData()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Serveur MIJEAC connecté à PostgreSQL sur le port ${PORT}`);
-    });
-  })
-  .catch(err => {
+
+app.listen(PORT, "0.0.0.0", async () => {
+  console.log(`Serveur MIJEAC en écoute sur le port ${PORT}`);
+  try {
+    await ensureSeedData();
+    console.log("Base PostgreSQL prête.");
+  } catch (err) {
     console.error("Erreur d'initialisation PostgreSQL :", err);
-    process.exit(1);
-  });
+  }
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled Rejection:", err);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+});
